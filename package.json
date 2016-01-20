@@ -1,0 +1,39 @@
+{
+  "name": "boco-knex-rdb",
+  "version": "0.1.0",
+  "description": "Relational Database classes for Knex: TableGateway, DataMapper, etc...",
+  "main": "index.js",
+  "scripts": {
+    "test": "coffee -l README.md"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bocodigitalmedia/boco-knex-rdb.git"
+  },
+  "keywords": [
+    "knex",
+    "tablegateway",
+    "datamapper",
+    "rdb",
+    "relational",
+    "database",
+    "mysql",
+    "postgres",
+    "sqlite3"
+  ],
+  "author": "Christian Bradley <christianbradley@gmail.com> (https://github.com/christianbradley)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/bocodigitalmedia/boco-knex-rdb/issues"
+  },
+  "homepage": "https://github.com/bocodigitalmedia/boco-knex-rdb#readme",
+  "devDependencies": {
+    "coffee-script": "^1.10.0",
+    "mysql": "^2.10.2"
+  },
+  "dependencies": {
+    "bluebird": "^3.1.1",
+    "knex": "^0.9.0",
+    "lodash": "^4.0.0"
+  }
+}

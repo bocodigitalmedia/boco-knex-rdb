@@ -153,7 +153,12 @@ configure = (dependencies = {}) ->
         return done error if error
         return done null, records
 
-  {configure, TableGateway, DataMapper, Cursor, DataMapperObjectSourceMap, DataMapperRecordSourceMap}
-
+  BocoKnexRDB =
+    configure: configure
+    TableGateway: TableGateway
+    DataMapper: DataMapper
+    Cursor: Cursor
+    DataMapperObjectSourceMap: DataMapperObjectSourceMap
+    DataMapperRecordSourceMap: DataMapperRecordSourceMap
 
 module.exports = configure()

@@ -28,7 +28,7 @@ function build_specs() {
 }
 
 function build_readme() {
-  cat ./docs/$package_name.coffee.md > README.md
+  cat ./docs/boco-knex-rdb.coffee.md > README.md
   echo -e "\n---\n" >> README.md
   cat LICENSE >> README.md
 }

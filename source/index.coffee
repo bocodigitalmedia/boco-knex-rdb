@@ -81,6 +81,12 @@ configure = (dependencies = {}) ->
       @objectSourceMap ?= new DataMapperObjectSourceMap()
       @recordSourceMap ?= new DataMapperRecordSourceMap()
 
+    defineObjectSourceMap: (definition) ->
+      @objectSourceMap.define definition
+
+    defineRecordSourceMap: (definition) ->
+      @recordSourceMap.define definition
+
     constructObject: (properties) ->
       properties
 

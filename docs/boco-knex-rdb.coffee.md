@@ -19,7 +19,6 @@ $ git clone https://github.com/bocodigitalmedia/boco-knex-rdb
 BocoKnexRDB = require "boco-knex-rdb"
 knex = require("knex") client: "sqlite3", connection: "test.db"
 ```
-
 Let's create a "users" table to use for our examples:
 
 ```coffee
@@ -28,16 +27,15 @@ defineUsersTable = (table) ->
   table.string("username")
   table.string("full_name")
   table.json("serialized_data")
+  table.boolean("active").defaultTo(true)
 
 createUsersTable = ->
   knex.schema.createTableIfNotExists("users", defineUsersTable)
 
-createUsersTable().asCallback (error) ->
-  expect(error?).toBe false
-  ok()
+createUsersPromise = createUsersTable()
 ```
 
-Let's hold on to a "user" record for use in these examples:
+We'll also hold on to a "user" record for later use.
 
 ```coffee
 record =
@@ -45,7 +43,17 @@ record =
   username: "user@example.com"
   full_name: null
   serialized_data: JSON.stringify(foo: "bar")
+  active: false
 ```
+
+Make sure the table was created before continuing...
+
+```coffee
+createUsersPromise.asCallback (error, result) ->
+  expect(error?).toBe false
+  ok()
+```
+
 
 ### Table Gateway
 
@@ -53,13 +61,25 @@ record =
 gateway = new BocoKnexRDB.TableGateway knex: knex, table: "users"
 ```
 
+#### Modifying record construction
+
+Since knex returns `1` or `0` for booleans, let's override the `constructRecord` method
+to return `true` and `false` on our `active` property:
+
+```coffee
+gateway.constructRecord = (record) ->
+  record.active = Boolean(record.active)
+  record
+```
+
 #### Inserting a record
 
 Insert a new record by passing in the record data.
 
 ```coffee
-gateway.insert record, (error, insertedId) ->
-  expect(error?).toBe false
+gateway.insert record, (error, incrementId) ->
+  throw error if error?
+  expect(incrementId).toBe 1
   ok()
 ```
 
@@ -71,9 +91,10 @@ Update a record by passing in the identifier, followed by a set of update parame
 parameters =
   username: "john.doe@example.com"
   full_name: "John Doe"
+  active: true
 
 gateway.update record.id, parameters, (error, updateCount) ->
-  expect(error?).toBe false
+  throw error if error?
   expect(updateCount).toEqual 1
   ok()
 ```
@@ -84,11 +105,12 @@ Read a record by passing in the identifier.
 
 ```coffee
 gateway.read record.id, (error, result) ->
-  expect(error?).toBe false
-  expect(result.id).toEqual(record.id)
-  expect(result.username).toEqual("john.doe@example.com")
-  expect(result.full_name).toEqual("John Doe")
-  expect(result.serialized_data).toEqual('{"foo":"bar"}')
+  throw error if error?
+  expect(result.id).toEqual record.id
+  expect(result.username).toEqual "john.doe@example.com"
+  expect(result.full_name).toEqual "John Doe"
+  expect(result.serialized_data).toEqual '{"foo":"bar"}'
+  expect(result.active).toEqual 1
   ok()
 ```
 
@@ -99,9 +121,37 @@ Just call `all` to get a `Cursor` for all records
 ```coffee
 cursor = gateway.all()
 cursor.toArray (error, records) ->
-  expect(error?).toBe false
+  throw error if error?
   expect(records.length).toEqual(1)
   expect(records[0].id).toEqual record.id
+  ok()
+```
+
+#### Finding records with scopes
+
+Define named scopes for your gateway, with each scope
+receiving a query pre-bound to select full records from the
+table.
+
+The second argument of your scope method will be the value passed
+to the scope via the `find` method.
+
+```coffee
+gateway.defineScope "isActive", (query, activeState) ->
+  query.where active: activeState
+
+gateway.defineScope "withLastName", (query, last) ->
+  query.where "full_name", "like", "% #{last}"
+```
+
+Call `find` with scopes and their parameters to get a cursor.
+
+```coffee
+cursor = gateway.find isActive: true, withLastName: "Doe"
+
+cursor.toArray (error, results) ->
+  throw error if error?
+  expect(results.length).toBe 1
   ok()
 ```
 
@@ -138,12 +188,14 @@ mapper.defineObjectSourceMap
   firstName: (record) -> record.full_name.split(" ")[0]
   lastName: (record) -> record.full_name.split(" ")[1]
   data: ["serialized_data", JSON.parse]
+  active: null
 
 mapper.defineRecordSourceMap
   id: null
   username: null
   full_name: (user) -> [user.firstName, user.lastName].join(" ")
   serialized_data: ["data", JSON.stringify]
+  active: null
 ```
 
 #### Using the DataMapper
@@ -155,7 +207,7 @@ The only difference being that your model objects are converted to and from reco
 userId = record.id
 
 mapper.read userId, (error, user) ->
-  expect(error?).toBe false
+  throw error if error?
   expect(user.id).toEqual record.id
   expect(user.username).toEqual "john.doe@example.com"
   expect(user.firstName).toEqual "John"

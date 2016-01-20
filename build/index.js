@@ -63,6 +63,8 @@ configure = function(dependencies) {
 
     TableGateway.prototype.knex = null;
 
+    TableGateway.prototype.scopes = null;
+
     function TableGateway(props) {
       var key, val;
       for (key in props) {
@@ -70,7 +72,40 @@ configure = function(dependencies) {
         val = props[key];
         this[key] = val;
       }
+      if (this.scopes == null) {
+        this.scopes = {};
+      }
     }
+
+    TableGateway.prototype.constructRecord = function(properties) {
+      return properties;
+    };
+
+    TableGateway.prototype.defineScope = function(name, buildQuery) {
+      return this.scopes[name] = buildQuery;
+    };
+
+    TableGateway.prototype.defineScopes = function(scopes) {
+      var buildQuery, name, results;
+      results = [];
+      for (name in scopes) {
+        if (!hasProp.call(scopes, name)) continue;
+        buildQuery = scopes[name];
+        results.push(this.scopes[name] = buildQuery);
+      }
+      return results;
+    };
+
+    TableGateway.prototype.buildScopedQuery = function(scopes) {
+      var name, params, query;
+      query = this.knex(this.table).select('*');
+      for (name in scopes) {
+        if (!hasProp.call(scopes, name)) continue;
+        params = scopes[name];
+        query = this.scopes[name](query, params);
+      }
+      return query;
+    };
 
     TableGateway.prototype.createIdentityParameters = function(identifier) {
       if (typeof identifier !== 'object') {
@@ -161,13 +196,28 @@ configure = function(dependencies) {
       identifier = arguments[0], args = 3 <= arguments.length ? slice.call(arguments, 1, i = arguments.length - 1) : (i = 1, []), done = arguments[i++];
       identityParameters = this.createIdentityParameters(identifier);
       query = this.knex(this.table).where(identityParameters).first();
-      return this.executeQuery.apply(this, [query].concat(slice.call(args), [done]));
+      return this.executeQuery.apply(this, [query].concat(slice.call(args), [function(error, record) {
+        if (error != null) {
+          return done(error);
+        }
+        if (record == null) {
+          return done("record not found");
+        }
+        return done(null, record);
+      }]));
     };
 
     TableGateway.prototype.all = function() {
       var args, query;
       args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
       query = this.knex(this.table).select('*');
+      return this.createCursor.apply(this, [query].concat(slice.call(args)));
+    };
+
+    TableGateway.prototype.find = function() {
+      var args, query, scopes;
+      scopes = arguments[0], args = 2 <= arguments.length ? slice.call(arguments, 1) : [];
+      query = this.buildScopedQuery(scopes);
       return this.createCursor.apply(this, [query].concat(slice.call(args)));
     };
 
@@ -196,6 +246,12 @@ configure = function(dependencies) {
       }
     }
 
+    DataMapper.prototype.defineScope = function() {
+      var args, ref;
+      args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
+      return (ref = this.tableGateway).defineScope.apply(ref, args);
+    };
+
     DataMapper.prototype.defineObjectSourceMap = function(definition) {
       return this.objectSourceMap.define(definition);
     };
@@ -208,10 +264,6 @@ configure = function(dependencies) {
       return properties;
     };
 
-    DataMapper.prototype.constructRecord = function(properties) {
-      return properties;
-    };
-
     DataMapper.prototype.convertRecord = function(record) {
       var properties;
       properties = this.objectSourceMap.resolve(record);
@@ -219,9 +271,7 @@ configure = function(dependencies) {
     };
 
     DataMapper.prototype.convertObject = function(object) {
-      var properties;
-      properties = this.recordSourceMap.resolve(object);
-      return this.constructRecord(properties);
+      return this.recordSourceMap.resolve(object);
     };
 
     DataMapper.prototype.convertObjectParameters = function(parameters) {
@@ -296,6 +346,14 @@ configure = function(dependencies) {
       var args, cursor, ref;
       args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
       cursor = (ref = this.tableGateway).all.apply(ref, args);
+      cursor.stream = cursor.stream.pipe(this.createTransformStream());
+      return cursor;
+    };
+
+    DataMapper.prototype.find = function() {
+      var args, cursor, ref;
+      args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
+      cursor = (ref = this.tableGateway).find.apply(ref, args);
       cursor.stream = cursor.stream.pipe(this.createTransformStream());
       return cursor;
     };

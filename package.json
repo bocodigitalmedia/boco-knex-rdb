@@ -1,6 +1,6 @@
 {
   "name": "boco-knex-rdb",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Relational Database classes for Knex: TableGateway, DataMapper, etc...",
   "main": "index.js",
   "scripts": {

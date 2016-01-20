@@ -1,0 +1,11 @@
+{
+  "generator": "boco-mdd-jasmine-coffee",
+  "parserOptions": {
+    "nativeLanguages": ["coffee"]
+  },
+  "converterOptions": {
+    "readDir": "docs",
+    "writeDir": "spec",
+    "writeExt": ".spec.coffee"
+  }
+}

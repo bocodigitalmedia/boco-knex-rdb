@@ -1,0 +1,75 @@
+#!/bin/bash
+previous_pwd=$(pwd)
+node_bin="./node_modules/.bin"
+package_name=$(npm view . name)
+global_object_name=$(node -e "console.log(require('./package.json').globalObjectName)")
+
+function package_version() {
+  node -e "console.log(require('./package.json').version)"
+}
+
+function clean_dir() {
+  find $1 -name "$2" -print0 | xargs -0 rm -rf
+}
+
+function clean_project() {
+  echo "* clean $package_name"
+  clean_dir build "*.js"
+  clean_dir build "*.map"
+  clean_dir spec "*.spec.coffee"
+}
+
+function build_source() {
+  $node_bin/coffee -cmb -o build source
+}
+
+function build_specs() {
+  $node_bin/boco-markdown-driven -c markdown-driven.json "docs/**/*.coffee.md"
+}
+
+function build_readme() {
+  cat ./docs/boco-knex-rdb.coffee.md > README.md
+  echo -e "\n---\n" >> README.md
+  cat LICENSE >> README.md
+}
+
+function build_project() {
+  build_source
+  build_specs
+  build_readme
+}
+
+function reinstall() {
+  npm install && npm update && npm prune
+}
+
+function run_specs() {
+  echo "* run_specs $package_name"
+  # run specs
+  NODE_PATH=$NODE_PATH:. $node_bin/coffee ./spec/support/jasmine-runner.coffee
+}
+
+function npm_test() {
+  rm -f "test.db"
+  clean_project && build_project && run_specs
+  rm -f "test.db"
+}
+
+function npm_preversion() {
+  reinstall && npm_test
+}
+
+function npm_version() {
+  git add -u
+}
+
+function npm_postversion() {
+  version = $(package_version)
+
+  git commit -p --amend
+  git tag -d v$(package_version) && git tag v$(package_version)
+}
+
+argv=("$*")
+for arg in $argv; do eval ${arg}; done
+cd $previous_pwd

@@ -9,6 +9,42 @@ configure = (dependencies = {}) ->
     TransformStream ?= require("stream").Transform
     WritableStream ?= require("stream").Writable
 
+  class BocoKnexRDBError extends Error
+    @code: "ER_BOCO_KNEX_RDB_ERROR"
+    constructor: (message, payload) ->
+      @name = @constructor.name
+      @code = @constructor.code
+      @message = message
+      @payload = payload
+
+  class ScopeNotDefined extends BocoKnexRDBError
+    @code: "ER_SCOPE_NOT_DEFINED"
+
+    constructor: (message, {name}) ->
+      message ?= "Scope not found: #{name}"
+      super message, {name}
+
+  class RecordNotFound extends BocoKnexRDBError
+    @code: "ER_RECORD_NOT_FOUND"
+
+    constructor: (message, {identifier}) ->
+      message ?= "Record not found: #{identifier}"
+      super message, {identifier}
+
+  class RecordNotUpdated extends BocoKnexRDBError
+    @code: "ER_RECORD_NOT_UPDATED"
+
+    constructor: (message, {identifier}) ->
+      message ?= "Record not updated: #{identifier}"
+      super message, {identifier}
+
+  class RecordNotRemoved extends BocoKnexRDBError
+    @code: "ER_RECORD_NOT_REMOVED"
+
+    constructor: (message, {identifier}) ->
+      message ?= "Record not removed: #{identifier}"
+      super message, {identifier}
+
   class DataMapperObjectSourceMap extends ObjectSourceMap
     defaultResolver: (source, key) -> source[snakeCase(key)]
 
@@ -30,12 +66,16 @@ configure = (dependencies = {}) ->
     defineScope: (name, buildQuery) ->
       @scopes[name] = buildQuery
 
-    defineScopes: (scopes) ->
-      @scopes[name] = buildQuery for own name, buildQuery of scopes
+    applyScope: (name, params, query) ->
+      scope = @scopes[name]
+      throw new ScopeNotDefined null, {name} unless scope?
+      scope query, params
 
-    buildScopedQuery: (scopes) ->
-      query = @knex(@table).select('*')
-      query = @scopes[name] query, params for own name, params of scopes
+    getDefinedScope: (name) ->
+      return @scopes[name]
+
+    applyScopes: (scopes, query) ->
+      query = @applyScope name, params, query for own name, params of scopes
       query
 
     createIdentityParameters: (identifier) ->
@@ -64,27 +104,24 @@ configure = (dependencies = {}) ->
       identityParameters = @createIdentityParameters identifier
       query = @knex(@table).where(identityParameters).update(parameters)
       @executeQuery query, args..., (error, updatedRecordsCount) ->
-        # TODO: RecordNotUpdated
         return done error if error?
-        return done "no rows updated" if updatedRecordsCount is 0
+        return done new RecordNotUpdated(null, {identifier}) if updatedRecordsCount is 0
         return done null, updatedRecordsCount
 
     remove: (identifier, args..., done) ->
       identityParameters = @createIdentityParameters identifier
       query = @knex(@table).where(identityParameters).del()
       @executeQuery query, args..., (error, removedRecordsCount) ->
-        # TODO: RecordNotRemoved error
         return done error if error?
-        return done "record not removed" if removedRecordsCount is 0
+        return done new RecordNotRemoved(null, {identifier}) if removedRecordsCount is 0
         return done null, removedRecordsCount
 
     read: (identifier, args..., done) ->
       identityParameters = @createIdentityParameters identifier
       query = @knex(@table).where(identityParameters).first()
       @executeQuery query, args..., (error, record) ->
-        # TODO: RecordNotFound
         return done error if error?
-        return done "record not found" unless record?
+        return done new RecordNotFound(null, {identifier}) unless record?
         return done null, record
 
     all: (args...) ->
@@ -92,7 +129,7 @@ configure = (dependencies = {}) ->
       @createCursor query, args...
 
     find: (scopes, args...) ->
-      query = @buildScopedQuery scopes
+      query = @applyScopes scopes, @knex(@table).select('*')
       @createCursor query, args...
 
   class DataMapper
@@ -187,12 +224,22 @@ configure = (dependencies = {}) ->
         return done error if error
         return done null, records
 
-  BocoKnexRDB =
-    configure: configure
-    TableGateway: TableGateway
-    DataMapper: DataMapper
-    Cursor: Cursor
-    DataMapperObjectSourceMap: DataMapperObjectSourceMap
-    DataMapperRecordSourceMap: DataMapperRecordSourceMap
+  Errors = {
+    ScopeNotDefined,
+    RecordNotFound,
+    RecordNotUpdated,
+    RecordNotRemoved,
+    BocoKnexRDBError
+  }
+
+  BocoKnexRDB = {
+    configure,
+    TableGateway,
+    DataMapper,
+    Cursor,
+    DataMapperObjectSourceMap,
+    DataMapperRecordSourceMap,
+    Errors
+  }
 
 module.exports = configure()

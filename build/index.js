@@ -5,7 +5,7 @@ var configure,
   slice = [].slice;
 
 configure = function(dependencies) {
-  var Bluebird, BocoKnexRDB, Cursor, DataMapper, DataMapperObjectSourceMap, DataMapperRecordSourceMap, ObjectSourceMap, TableGateway, TransformStream, WritableStream, camelCase, snakeCase;
+  var Bluebird, BocoKnexRDB, BocoKnexRDBError, Cursor, DataMapper, DataMapperObjectSourceMap, DataMapperRecordSourceMap, Errors, ObjectSourceMap, RecordNotFound, RecordNotRemoved, RecordNotUpdated, ScopeNotDefined, TableGateway, TransformStream, WritableStream, camelCase, snakeCase;
   if (dependencies == null) {
     dependencies = {};
   }
@@ -30,6 +30,97 @@ configure = function(dependencies) {
       WritableStream = require("stream").Writable;
     }
   }
+  BocoKnexRDBError = (function(superClass) {
+    extend(BocoKnexRDBError, superClass);
+
+    BocoKnexRDBError.code = "ER_BOCO_KNEX_RDB_ERROR";
+
+    function BocoKnexRDBError(message, payload) {
+      this.name = this.constructor.name;
+      this.code = this.constructor.code;
+      this.message = message;
+      this.payload = payload;
+    }
+
+    return BocoKnexRDBError;
+
+  })(Error);
+  ScopeNotDefined = (function(superClass) {
+    extend(ScopeNotDefined, superClass);
+
+    ScopeNotDefined.code = "ER_SCOPE_NOT_DEFINED";
+
+    function ScopeNotDefined(message, arg) {
+      var name;
+      name = arg.name;
+      if (message == null) {
+        message = "Scope not found: " + name;
+      }
+      ScopeNotDefined.__super__.constructor.call(this, message, {
+        name: name
+      });
+    }
+
+    return ScopeNotDefined;
+
+  })(BocoKnexRDBError);
+  RecordNotFound = (function(superClass) {
+    extend(RecordNotFound, superClass);
+
+    RecordNotFound.code = "ER_RECORD_NOT_FOUND";
+
+    function RecordNotFound(message, arg) {
+      var identifier;
+      identifier = arg.identifier;
+      if (message == null) {
+        message = "Record not found: " + identifier;
+      }
+      RecordNotFound.__super__.constructor.call(this, message, {
+        identifier: identifier
+      });
+    }
+
+    return RecordNotFound;
+
+  })(BocoKnexRDBError);
+  RecordNotUpdated = (function(superClass) {
+    extend(RecordNotUpdated, superClass);
+
+    RecordNotUpdated.code = "ER_RECORD_NOT_UPDATED";
+
+    function RecordNotUpdated(message, arg) {
+      var identifier;
+      identifier = arg.identifier;
+      if (message == null) {
+        message = "Record not updated: " + identifier;
+      }
+      RecordNotUpdated.__super__.constructor.call(this, message, {
+        identifier: identifier
+      });
+    }
+
+    return RecordNotUpdated;
+
+  })(BocoKnexRDBError);
+  RecordNotRemoved = (function(superClass) {
+    extend(RecordNotRemoved, superClass);
+
+    RecordNotRemoved.code = "ER_RECORD_NOT_REMOVED";
+
+    function RecordNotRemoved(message, arg) {
+      var identifier;
+      identifier = arg.identifier;
+      if (message == null) {
+        message = "Record not removed: " + identifier;
+      }
+      RecordNotRemoved.__super__.constructor.call(this, message, {
+        identifier: identifier
+      });
+    }
+
+    return RecordNotRemoved;
+
+  })(BocoKnexRDBError);
   DataMapperObjectSourceMap = (function(superClass) {
     extend(DataMapperObjectSourceMap, superClass);
 
@@ -85,24 +176,27 @@ configure = function(dependencies) {
       return this.scopes[name] = buildQuery;
     };
 
-    TableGateway.prototype.defineScopes = function(scopes) {
-      var buildQuery, name, results;
-      results = [];
-      for (name in scopes) {
-        if (!hasProp.call(scopes, name)) continue;
-        buildQuery = scopes[name];
-        results.push(this.scopes[name] = buildQuery);
+    TableGateway.prototype.applyScope = function(name, params, query) {
+      var scope;
+      scope = this.scopes[name];
+      if (scope == null) {
+        throw new ScopeNotDefined(null, {
+          name: name
+        });
       }
-      return results;
+      return scope(query, params);
     };
 
-    TableGateway.prototype.buildScopedQuery = function(scopes) {
-      var name, params, query;
-      query = this.knex(this.table).select('*');
+    TableGateway.prototype.getDefinedScope = function(name) {
+      return this.scopes[name];
+    };
+
+    TableGateway.prototype.applyScopes = function(scopes, query) {
+      var name, params;
       for (name in scopes) {
         if (!hasProp.call(scopes, name)) continue;
         params = scopes[name];
-        query = this.scopes[name](query, params);
+        query = this.applyScope(name, params, query);
       }
       return query;
     };
@@ -169,7 +263,9 @@ configure = function(dependencies) {
           return done(error);
         }
         if (updatedRecordsCount === 0) {
-          return done("no rows updated");
+          return done(new RecordNotUpdated(null, {
+            identifier: identifier
+          }));
         }
         return done(null, updatedRecordsCount);
       }]));
@@ -185,7 +281,9 @@ configure = function(dependencies) {
           return done(error);
         }
         if (removedRecordsCount === 0) {
-          return done("record not removed");
+          return done(new RecordNotRemoved(null, {
+            identifier: identifier
+          }));
         }
         return done(null, removedRecordsCount);
       }]));
@@ -201,7 +299,9 @@ configure = function(dependencies) {
           return done(error);
         }
         if (record == null) {
-          return done("record not found");
+          return done(new RecordNotFound(null, {
+            identifier: identifier
+          }));
         }
         return done(null, record);
       }]));
@@ -217,7 +317,7 @@ configure = function(dependencies) {
     TableGateway.prototype.find = function() {
       var args, query, scopes;
       scopes = arguments[0], args = 2 <= arguments.length ? slice.call(arguments, 1) : [];
-      query = this.buildScopedQuery(scopes);
+      query = this.applyScopes(scopes, this.knex(this.table).select('*'));
       return this.createCursor.apply(this, [query].concat(slice.call(args)));
     };
 
@@ -408,13 +508,21 @@ configure = function(dependencies) {
     return Cursor;
 
   })();
+  Errors = {
+    ScopeNotDefined: ScopeNotDefined,
+    RecordNotFound: RecordNotFound,
+    RecordNotUpdated: RecordNotUpdated,
+    RecordNotRemoved: RecordNotRemoved,
+    BocoKnexRDBError: BocoKnexRDBError
+  };
   return BocoKnexRDB = {
     configure: configure,
     TableGateway: TableGateway,
     DataMapper: DataMapper,
     Cursor: Cursor,
     DataMapperObjectSourceMap: DataMapperObjectSourceMap,
-    DataMapperRecordSourceMap: DataMapperRecordSourceMap
+    DataMapperRecordSourceMap: DataMapperRecordSourceMap,
+    Errors: Errors
   };
 };
 

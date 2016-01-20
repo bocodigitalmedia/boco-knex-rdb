@@ -37,16 +37,20 @@ createUsersTable().asCallback (error) ->
   ok()
 ```
 
-### Table Gateway
+Let's hold on to a "user" record for use in these examples:
 
 ```coffee
-TableGateway = BocoKnexRDB.TableGateway
-gateway = new TableGateway knex: knex, table: "users"
-
 record =
   id: "aaeab0c8-201f-4a1b-85bd-f925a01d551c"
   username: "user@example.com"
+  full_name: null
   serialized_data: JSON.stringify(foo: "bar")
+```
+
+### Table Gateway
+
+```coffee
+gateway = new BocoKnexRDB.TableGateway knex: knex, table: "users"
 ```
 
 #### Inserting a record
@@ -112,6 +116,55 @@ before the callback to run that method within the transaction:
 * `gateway.remove id, {transaction}, done`
 * `gateway.all {transaction}`
 
+### DataMapper
+
+The DataMapper acts as a layer over a TableGateway.
+
+```coffee
+usersGateway = new BocoKnexRDB.TableGateway knex: knex, table: "users"
+mapper = new BocoKnexRDB.DataMapper tableGateway: usersGateway
+```
+
+Define the object source map for your records and the objects they represent.
+See [boco-object-source-map] for more information on object source maps.
+
+Note that there are default resolvers on both the `recordSourceMap` and `objectSourceMap`
+for translating `snakeCase` record keys to `camelCase` object keys, and vice-versa.
+
+```coffee
+mapper.defineObjectSourceMap
+  id: null
+  username: null
+  firstName: (record) -> record.full_name.split(" ")[0]
+  lastName: (record) -> record.full_name.split(" ")[1]
+  data: ["serialized_data", JSON.parse]
+
+mapper.defineRecordSourceMap
+  id: null
+  username: null
+  full_name: (user) -> [user.firstName, user.lastName].join(" ")
+  serialized_data: ["data", JSON.stringify]
+```
+
+#### Using the DataMapper
+
+The methods of the DataMapper mimic the underlying TableGateway interface.
+The only difference being that your model objects are converted to and from records.
+
+```coffee
+userId = record.id
+
+mapper.read userId, (error, user) ->
+  expect(error?).toBe false
+  expect(user.id).toEqual record.id
+  expect(user.username).toEqual "john.doe@example.com"
+  expect(user.firstName).toEqual "John"
+  expect(user.lastName).toEqual "Doe"
+  expect(user.data.foo).toEqual "bar"
+  ok()
+```
+
 
 [npm]: http://npmjs.org
 [github]: http://www.github.com
+[boco-object-source-map]: http://github.com/bocodigitalmedia/boco-object-source-map

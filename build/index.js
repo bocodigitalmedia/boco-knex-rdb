@@ -196,6 +196,14 @@ configure = function(dependencies) {
       }
     }
 
+    DataMapper.prototype.defineObjectSourceMap = function(definition) {
+      return this.objectSourceMap.define(definition);
+    };
+
+    DataMapper.prototype.defineRecordSourceMap = function(definition) {
+      return this.recordSourceMap.define(definition);
+    };
+
     DataMapper.prototype.constructObject = function(properties) {
       return properties;
     };

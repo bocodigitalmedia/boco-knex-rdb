@@ -18,9 +18,25 @@ configure = (dependencies = {}) ->
   class TableGateway
     table: null
     knex: null
+    scopes: null
 
     constructor: (props) ->
       @[key] = val for own key, val of props
+      @scopes ?= {}
+
+    constructRecord: (properties) ->
+      properties
+
+    defineScope: (name, buildQuery) ->
+      @scopes[name] = buildQuery
+
+    defineScopes: (scopes) ->
+      @scopes[name] = buildQuery for own name, buildQuery of scopes
+
+    buildScopedQuery: (scopes) ->
+      query = @knex(@table).select('*')
+      query = @scopes[name] query, params for own name, params of scopes
+      query
 
     createIdentityParameters: (identifier) ->
       return id: identifier unless typeof identifier is 'object'
@@ -65,10 +81,18 @@ configure = (dependencies = {}) ->
     read: (identifier, args..., done) ->
       identityParameters = @createIdentityParameters identifier
       query = @knex(@table).where(identityParameters).first()
-      @executeQuery query, args..., done
+      @executeQuery query, args..., (error, record) ->
+        # TODO: RecordNotFound
+        return done error if error?
+        return done "record not found" unless record?
+        return done null, record
 
     all: (args...) ->
       query = @knex(@table).select('*')
+      @createCursor query, args...
+
+    find: (scopes, args...) ->
+      query = @buildScopedQuery scopes
       @createCursor query, args...
 
   class DataMapper
@@ -81,6 +105,9 @@ configure = (dependencies = {}) ->
       @objectSourceMap ?= new DataMapperObjectSourceMap()
       @recordSourceMap ?= new DataMapperRecordSourceMap()
 
+    defineScope: (args...) ->
+      @tableGateway.defineScope args...
+
     defineObjectSourceMap: (definition) ->
       @objectSourceMap.define definition
 
@@ -90,16 +117,12 @@ configure = (dependencies = {}) ->
     constructObject: (properties) ->
       properties
 
-    constructRecord: (properties) ->
-      properties
-
     convertRecord: (record) ->
       properties = @objectSourceMap.resolve record
       @constructObject properties
 
     convertObject: (object) ->
-      properties = @recordSourceMap.resolve object
-      @constructRecord properties
+      @recordSourceMap.resolve object
 
     convertObjectParameters: (parameters) ->
       parameters = @recordSourceMap.resolve parameters
@@ -136,6 +159,11 @@ configure = (dependencies = {}) ->
 
     all: (args...) ->
       cursor = @tableGateway.all args...
+      cursor.stream = cursor.stream.pipe @createTransformStream()
+      cursor
+
+    find: (args...) ->
+      cursor = @tableGateway.find args...
       cursor.stream = cursor.stream.pipe @createTransformStream()
       cursor
 
